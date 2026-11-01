@@ -33,7 +33,7 @@ export function AnimatedSplashOverlay() {
     },
   });
 
-  const image = <Image style={styles.image} source={require('@/assets/images/expo-logo.png')} />;
+  const image = <Image style={splashStyles.image} source={require('@/assets/images/splash-icon.png')} />;
 
   return animate ? (
     <Animated.View
@@ -43,7 +43,7 @@ export function AnimatedSplashOverlay() {
           scheduleOnRN(setVisible, false);
         }
       })}
-      style={styles.splashOverlay}>
+      style={splashStyles.splashOverlay}>
       {image}
     </Animated.View>
   ) : (
@@ -53,11 +53,25 @@ export function AnimatedSplashOverlay() {
           setAnimate(true);
         });
       }}
-      style={styles.splashOverlay}>
+      style={splashStyles.splashOverlay}>
       {image}
     </View>
   );
 }
+
+const splashStyles = StyleSheet.create({
+  splashOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: '#000000',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+  },
+  image: {
+    width: 180,
+    height: 180,
+  },
+});
 
 const keyframe = new Keyframe({
   0: {
