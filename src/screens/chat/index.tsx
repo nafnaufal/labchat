@@ -33,13 +33,7 @@ import {
   updateConversation,
 } from '@/lib/db';
 import { computeCost, computeMarketCost, estimateTokens } from '@/lib/format';
-import {
-  MAX_IMAGES_PER_MESSAGE,
-  pickImages,
-  readImageBase64,
-  saveImageBase64,
-  type PickedImage,
-} from '@/lib/images';
+import { saveImageBase64 } from '@/lib/images';
 import { buildSystemPrompt } from '@/lib/persona';
 import { getApiKey, loadSettings } from '@/lib/settings';
 import type { AppSettings, Conversation, Message, ModelInfo } from '@/lib/types';
@@ -94,8 +88,6 @@ export const ChatScreen = forwardRef<ChatScreenHandle, ChatScreenProps>(function
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [promptVisible, setPromptVisible] = useState(false);
-  const [pendingImages, setPendingImages] = useState<PickedImage[]>([]);
-  const [pickingImage, setPickingImage] = useState(false);
   /** Model / system prompt chosen before the first message (fresh chat). */
   const [draftModelId, setDraftModelId] = useState<string | null>(null);
   const [draftSystemPrompt, setDraftSystemPrompt] = useState<string | null>(null);
@@ -121,8 +113,6 @@ export const ChatScreen = forwardRef<ChatScreenHandle, ChatScreenProps>(function
   const effectiveModelId =
     conversation?.modelId ?? draftModelId ?? settings?.defaultModelId ?? null;
   const activeModel = models.find((m) => m.id === effectiveModelId) ?? null;
-  /** Vision attach gate: unknown models are allowed (capabilities not cached yet). */
-  const canAttachImage = activeModel ? activeModel.vision : true;
   /** Image-generation models answer via /v1/images/generations instead of chat completions. */
   const isImageGenModel = activeModel?.imageGen ?? false;
 
@@ -246,39 +236,11 @@ export const ChatScreen = forwardRef<ChatScreenHandle, ChatScreenProps>(function
       if (systemPrompt) {
         apiMessages.push({ role: 'system', content: systemPrompt });
       }
-      // Attach images from the most recent messages, up to 4 images total across the
-      // whole request — older ones go as text only, keeping the JSON body well
-      // under the ~10MB limit even with multiple images per message.
-      const imagesByMessage = new Map<string, string[]>();
-      let imageBudget = MAX_IMAGES_PER_MESSAGE;
-      for (let i = history.length - 1; i >= 0 && imageBudget > 0; i--) {
-        const message = history[i];
-        if (message.error || message.imagePaths.length === 0) continue;
-        const take = message.imagePaths.slice(0, imageBudget);
-        imagesByMessage.set(message.id, take);
-        imageBudget -= take.length;
-      }
+      // Text-only: images are never attached to chat requests. The user's text
+      // and assistant replies are sent as plain strings — the current model
+      // rejects image/multimodal content parts with a 400 error.
       for (const message of history) {
         if (message.error) continue;
-        const paths = imagesByMessage.get(message.id);
-        if (paths && paths.length > 0) {
-          const parts: ApiContentPart[] = [];
-          if (message.content.trim()) {
-            parts.push({ type: 'text', text: message.content });
-          }
-          for (const path of paths) {
-            try {
-              const b64 = await readImageBase64(path);
-              parts.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } });
-            } catch {
-              // Saved file is gone — skip just that image.
-            }
-          }
-          if (parts.length > 0) {
-            apiMessages.push({ role: message.role, content: parts });
-            continue;
-          }
-        }
         apiMessages.push({ role: message.role, content: message.content });
       }
 
@@ -455,17 +417,7 @@ export const ChatScreen = forwardRef<ChatScreenHandle, ChatScreenProps>(function
 
   const send = async () => {
     const text = input.trim();
-    const images = pendingImages;
-    if ((!text && images.length === 0) || busy || !settingsRef.current || !effectiveModelId) return;
-
-    if (images.length > 0 && !canAttachImage) {
-      setError('Model ini tidak menerima gambar. Ganti ke model dengan badge VISION (lihat Cari Model).');
-      return;
-    }
-    if (images.length > 0 && isImageGenModel) {
-      setError('Model ini menghasilkan gambar dari teks — lampiran gambar tidak dipakai.');
-      return;
-    }
+    if (!text || busy || !settingsRef.current || !effectiveModelId) return;
 
     if (!(await getApiKey())) {
       setError('API key belum disetel — buka tab Setelan untuk mengisinya.');
@@ -474,20 +426,6 @@ export const ChatScreen = forwardRef<ChatScreenHandle, ChatScreenProps>(function
 
     setError(null);
     setInput('');
-    setPendingImages([]);
-
-    // Persist the attachments before inserting the message so the DB row always
-    // points at existing files. `images` holds the only other reference to the
-    // base64 payloads, so they become garbage once this function returns.
-    const imagePaths: string[] = [];
-    for (const image of images) {
-      try {
-        imagePaths.push(await saveImageBase64(image.base64, 'jpg'));
-      } catch (e) {
-        setError(`Gagal menyimpan gambar: ${e instanceof Error ? e.message : String(e)}`);
-        return;
-      }
-    }
 
     // First message of a fresh chat: create the conversation row now (not before),
     // carrying the model and system prompt the user picked pre-send.
@@ -526,7 +464,7 @@ export const ChatScreen = forwardRef<ChatScreenHandle, ChatScreenProps>(function
       conversationId: cid,
       role: 'user',
       content: text,
-      imagePaths,
+      imagePaths: [],
       modelId: null,
       inputTokens: null,
       outputTokens: null,
@@ -540,7 +478,7 @@ export const ChatScreen = forwardRef<ChatScreenHandle, ChatScreenProps>(function
 
     const current = conversationRef.current;
     if (current && !current.title) {
-      const title = (text || 'Gambar').length > 48 ? `${(text || 'Gambar').slice(0, 48)}…` : text || 'Gambar';
+      const title = text.length > 48 ? `${text.slice(0, 48)}…` : text;
       await updateConversation(cid, { title });
       const updated = { ...current, title };
       conversationRef.current = updated;
@@ -568,26 +506,6 @@ export const ChatScreen = forwardRef<ChatScreenHandle, ChatScreenProps>(function
 
   const stop = () => {
     abortRef.current?.abort();
-  };
-
-  const attachImage = async () => {
-    if (pickingImage || busy) return;
-    const room = MAX_IMAGES_PER_MESSAGE - pendingImages.length;
-    if (room <= 0) {
-      setError(`Maksimal ${MAX_IMAGES_PER_MESSAGE} gambar per pesan.`);
-      return;
-    }
-    setPickingImage(true);
-    try {
-      const picked = await pickImages();
-      if (picked && picked.length > 0) {
-        setPendingImages((prev) => [...prev, ...picked].slice(0, MAX_IMAGES_PER_MESSAGE));
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setPickingImage(false);
-    }
   };
 
   const openPicker = async () => {
@@ -627,7 +545,6 @@ export const ChatScreen = forwardRef<ChatScreenHandle, ChatScreenProps>(function
     setStreamText(null);
     setError(null);
     setInput('');
-    setPendingImages([]);
     setDraftModelId(null);
     setDraftSystemPrompt(null);
     setRewind(null);
@@ -941,13 +858,8 @@ export const ChatScreen = forwardRef<ChatScreenHandle, ChatScreenProps>(function
         onChangeText={setInput}
         onSend={send}
         onStop={stop}
-        onAttachImage={canAttachImage ? attachImage : undefined}
-        onRemoveImage={(index) => setPendingImages((prev) => prev.filter((_, i) => i !== index))}
-        pendingImages={pendingImages}
-        maxImages={MAX_IMAGES_PER_MESSAGE}
         imageGenMode={isImageGenModel}
         busy={busy}
-        pickingImage={pickingImage}
       />
 
       {/* Sheets */}

@@ -13,13 +13,13 @@ interface ChatInputProps {
   onStop: () => void;
   /** Attach handler — only passed when the active model accepts image input. */
   onAttachImage?: () => void;
-  onRemoveImage: (index: number) => void;
-  pendingImages: PickedImage[];
-  maxImages: number;
+  onRemoveImage?: (index: number) => void;
+  pendingImages?: PickedImage[];
+  maxImages?: number;
   /** True when the active model generates images (send = generate from prompt). */
   imageGenMode: boolean;
   busy: boolean;
-  pickingImage: boolean;
+  pickingImage?: boolean;
 }
 
 export function ChatInput({
@@ -29,11 +29,11 @@ export function ChatInput({
   onStop,
   onAttachImage,
   onRemoveImage,
-  pendingImages,
-  maxImages,
+  pendingImages = [],
+  maxImages = 4,
   imageGenMode,
   busy,
-  pickingImage,
+  pickingImage = false,
 }: ChatInputProps) {
   const colors = useTheme();
   const { bottom } = useSafeAreaInsets();
@@ -78,7 +78,7 @@ export function ChatInput({
                   contentFit="cover"
                 />
                 <Pressable
-                  onPress={() => onRemoveImage(index)}
+                  onPress={() => onRemoveImage?.(index)}
                   hitSlop={6}
                   accessibilityRole="button"
                   accessibilityLabel={`Hapus gambar ${index + 1}`}
