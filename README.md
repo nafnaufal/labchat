@@ -1,56 +1,53 @@
-# Welcome to your Expo app 👋
+# LabChat
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Aplikasi chat Android pribadi untuk [Surplus Intelligence](https://www.surplusintelligence.ai) — pengganti aplikasi ChatGPT/Claude yang memakai API key Surplus kamu sendiri. Dibuat dengan Expo SDK 58 (React Native), Expo Router, dan SQLite lokal.
 
-## Get started
+![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 
-1. Install dependencies
+> **Catatan:** LabChat saat ini **hanya mendukung Surplus Intelligence sebagai penyedia** — tidak ada dukungan untuk OpenAI, Zhipu AI, atau penyedia lain. Masukkan buyer key Surplus (`inf_…`) di Setelan untuk mulai chat. LabChat adalah proyek independen dan **tidak berafiliasi dengan Surplus Intelligence**.
 
-   ```bash
-   npm install
-   ```
+## Fitur
 
-2. Start the app
+- **Chat streaming** ala ChatGPT — jawaban muncul kata demi kata, bisa dihentikan kapan saja.
+- **Navigasi tanpa bottom bar** — semua navigasi ada di drawer kiri (tombol ☰ di tiap layar): tombol **Chat baru** dan riwayat percakapan di atas, item nav **Chat / Cari Model / Setelan** terpasang di bawah drawer. Drawer bisa dibuka lewat **geser kanan dari tepi kiri layar** dan ditutup lewat **geser kiri di panelnya** (ketuk backdrop juga menutup). Tab Chat langsung membuka chat baru (belum ada yang tersimpan sampai pesan pertama terkirim); state tiap section tetap hidup saat berpindah (streaming tetap jalan di belakang).
+- **Harga pasar live** — Cari Model mengambil ask termurah `/api/markets` (publik) yang sudah net diskon, **diurut dari diskon terbesar**; estimasi biaya chat & generate gambar juga memakai harga pasar ini (fallback: harga referensi × floor diskon, cache 5 menit).
+- **Rewind di tempat** — tekan lama gelembung pesanmu untuk memuat ulang prompt itu ke input (banner rewind muncul), edit sesukamu, lalu kirim: semua pesan sesudahnya dihapus dan jawaban baru ditulis di chat yang sama.
+- **Branch dari balasan** — ikon cabang di tiap balasan AI (dengan dialog konfirmasi) menyalin chat sampai balasan itu ke percakapan baru berjudul `branch - Judul Lama`; lanjutkan dari sana, chat asal tidak berubah. Branch dari branch menambah prefix lagi (mis. `branch - branch - ...`).
+- **Model per chat dipilih dari daftar** — pilih model tersimpan saat chat; model default bisa diatur di Setelan atau di detail model.
+- **Estimasi biaya** per pesan dan total per percakapan — token usage × harga efektif setelah diskon `min{N}` dari Base URL.
+- **Lampirkan gambar (vision)** — tombol 📷 muncul hanya untuk model dengan badge VISION (kapabilitas dari `GET /v1/models` publik); pilih beberapa gambar sekaligus (maks 4), otomatis di-resize ke ≤1568px JPEG sebelum dikirim sebagai content part. Konteks riwayat juga dibatasi 4 gambar terakhir.
+- **Generate gambar** — model berbadge IMAGE GEN menjawab lewat `POST /v1/images/generations`: tulis prompt, hasilnya tersimpan lokal, ketuk untuk lihat fullscreen. Biaya dihitung per gambar.
+- **Custom Instructions** global (seperti AGENTS.md) di Setelan, plus override per percakapan lewat menu di dalam chat.
+- **Penyimpanan bisa diatur** — statistik penyimpanan, hapus semua percakapan, reset total data.
+- **API key disimpan aman** di SecureStore perangkat; hanya dikirim ke Surplus saat request.
 
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Menjalankan
 
 ```bash
-npm run reset-project
+npm install
+node_modules\.bin\expo.cmd start
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+Lalu buka aplikasi **Expo Go** di HP (satu jaringan Wi-Fi dengan PC) dan masukkan URL:
+`exp://<IP-PC>:8081`
 
-### Other setup steps
+> Catatan: di mesin dengan `allow-scripts` di `~/.npmrc` (npm 12), `npx expo install` gagal dengan `EALLOWSCRIPTS`.
+> Pakai `node_modules\.bin\expo.cmd install <paket>` untuk menambah dependensi.
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+## Setup pertama kali di aplikasi
 
-## Learn more
+1. Buka drawer **☰** → **Setelan** → isi **API Key** (buyer key `inf_…` dari surplusintelligence.ai) → **Uji koneksi**. Opsional: atur **Diskon minimum** (mis. min99) — semua request otomatis dikirim lewat `/minN`, berlaku langsung untuk request berikutnya.
+2. Tab **Cari Model** → cari model yang mau dipakai → ketuk **+** untuk menambahkannya ke daftar (atau ketuk barisnya untuk buka detail).
+3. Di detail model: jadikan default, atau hapus dari daftar kapan saja.
+4. Buka **☰** → bagian bawah drawer untuk pindah antar **Chat / Cari Model / Setelan**. Di Chat: ketuk judul untuk ganti model, ☰ untuk riwayat + **Chat baru**.
 
-To learn more about developing your project with Expo, look at the following resources:
+## Struktur
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```
+src/
+  app/                # Route (Expo Router): index (shell + drawer) model/[id]
+  screens/            # Isi layar: chat, browse, model-detail, settings
+  components/         # UI: app-shell + app-drawer (navigasi), markdown, chat (bubble, input, modal, picker), ui (icon, header, dialog)
+  lib/                # db (SQLite), api (SSE streaming + /v1/prices + /v1/models + image gen), images (picker/resize/simpan), settings, format, types
+  constants/theme.ts  # Warna light/dark + font
+```
